@@ -1,23 +1,29 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+export default withAuth(
+  function middleware(req) {
+    const token = req.nextauth.token;
+    const isCoachPage = req.nextUrl.pathname.startsWith("/dashboard-coach");
+    const isStudentPage = req.nextUrl.pathname.startsWith("/dashboard-aluno");
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    // Proteção de Rota: Se for página de Coach e o usuário não for coach, volta pro login
+    if (isCoachPage && token?.role !== "coach") {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
 
-  // Se não estiver logado e tentar acessar rotas protegidas, manda para o login
-  if (!session && req.nextUrl.pathname !== '/login') {
-    return NextResponse.redirect(new URL('/login', req.url))
+    // Proteção de Rota: Se for página de Aluno e o usuário não for aluno, volta pro login
+    if (isStudentPage && token?.role !== "aluno") {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+  },
+  {
+    callbacks: {
+      authorized: ({ token }) => !!token,
+    },
   }
-
-  return res
-}
+);
 
 export const config = {
-  matcher: ['/dashboard-aluno/:path*', '/dashboard-coach/:path*', '/plano-alimentar/:path*', '/checkin/:path*', '/progresso/:path*', '/gerenciar-planos/:path*'],
-}
+  matcher: ["/dashboard-coach/:path*", "/dashboard-aluno/:path*"],
+};
