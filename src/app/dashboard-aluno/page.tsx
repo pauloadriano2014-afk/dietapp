@@ -5,17 +5,25 @@ import MealCard from '@/components/MealCard';
 import ProgressChart from '@/components/ProgressChart';
 import EatingOutButton from '@/components/EatingOutButton';
 import MealCheckinController from '@/components/MealCheckinController';
+import { NutritionTools } from '@/components/NutritionTools';
+import ExportPDF from '@/components/ExportPDF';
 
 export default async function StudentDashboard() {
   const session = await getServerSession();
   
-  // 1. Busca dados do perfil e progresso no Neon
+  // 1. Busca dados do perfil (incluindo a meta individual de água)
   const userData = await sql`
-    SELECT id, full_name FROM profiles WHERE email = ${session?.user?.email} LIMIT 1
+    SELECT id, full_name, water_goal FROM profiles WHERE email = ${session?.user?.email} LIMIT 1
   `;
-  
   const student = userData[0];
 
+  // 2. Busca água registrada hoje
+  const waterData = await sql`
+    SELECT amount_ml FROM water_logs WHERE student_id = ${student.id} AND created_at = CURRENT_DATE
+  `;
+  const waterToday = waterData[0]?.amount_ml || 0;
+
+  // 3. Busca histórico de peso
   const progressData = await sql`
     SELECT weight, created_at as date 
     FROM progress_logs 
@@ -24,7 +32,7 @@ export default async function StudentDashboard() {
     LIMIT 7
   `;
 
-  // 2. Busca as refeições com seus respectivos itens vinculados via JSON Aggregation (Neon/Postgres)
+  // 4. Busca as refeições com itens vinculados (JSON Aggregation)
   const meals = await sql`
     SELECT 
       m.*,
@@ -66,19 +74,30 @@ export default async function StudentDashboard() {
       </header>
 
       <main className="p-5 space-y-6 -mt-8">
-        {/* Banner de Identidade do App */}
-        <div className="px-2">
+        {/* Banner de Identidade e Opção de PDF */}
+        <div className="px-2 space-y-3">
           <div className="bg-slate-900 rounded-3xl p-4 flex items-center justify-between border border-slate-800 shadow-lg">
             <div className="flex flex-col">
                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">App Oficial</span>
                <span className="text-sm font-black text-white italic tracking-tighter">SHAPE NATURAL DE ELITE</span>
             </div>
-            <span className="text-xs font-bold text-slate-500 uppercase">v1.0</span>
+            <span className="text-xs font-bold text-slate-500 uppercase">v1.2</span>
           </div>
+          
+          {/* Botão de Exportar Dieta (Apenas aparece se houver refeições) */}
+          {meals.length > 0 && (
+            <ExportPDF studentName={student.full_name} meals={meals} />
+          )}
         </div>
+
+        {/* Ferramentas de Nutrição (Água, Trocas, Livre) */}
+        <NutritionTools waterInitial={waterToday} waterGoal={student.water_goal} />
 
         {/* Gráfico de Evolução Corporal */}
         <div className="bg-white p-2 rounded-[40px] shadow-sm border border-slate-100">
+          <div className="p-4 border-b border-slate-50 mb-2">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic text-center">Peso Corporal (kg)</h3>
+          </div>
           <ProgressChart data={progressData} />
         </div>
 
@@ -94,7 +113,7 @@ export default async function StudentDashboard() {
         {/* Seção de Dieta */}
         <div className="flex justify-between items-center px-2 pt-2">
           <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest italic">Estratégia Diária</h2>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter italic">Fisiculturismo Natural</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter italic text-right">Foco no Plano</span>
         </div>
 
         {/* Lista Dinâmica de Refeições */}
@@ -108,7 +127,9 @@ export default async function StudentDashboard() {
             ))
           ) : (
             <div className="bg-white border-2 border-dashed border-slate-200 rounded-[40px] p-12 text-center">
-              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Sua estratégia está sendo montada...</p>
+              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest italic">
+                Sua estratégia está sendo montada pelo Coach...
+              </p>
             </div>
           )}
         </div>
